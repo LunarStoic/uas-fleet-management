@@ -1,0 +1,32 @@
+// =============================================================================
+// UAS Fleet Management ERP — Gradle Multi-Project Settings
+// =============================================================================
+// This file defines the Gradle multi-project build structure. Each microservice
+// is a separate subproject, enabling independent compilation while sharing
+// common configuration from the root build.gradle.
+//
+// ARCHITECTURE:
+//   server/ (root project)
+//   ├── eureka-server      → Spring Cloud Service Registry
+//   ├── api-gateway        → Spring Cloud Gateway (single entry point)
+//   ├── auth-service       → Authentication & Authorization (IAM)
+//   ├── fleet-service      → UAV Fleet Master Data Management
+//   ├── order-service      → Logistics Order Lifecycle
+//   └── report-service     → Flight History & Reporting
+// =============================================================================
+
+rootProject.name = 'uas-fleet-management'
+
+// ---------------------------------------------------------------------------
+// Infrastructure Services
+// ---------------------------------------------------------------------------
+include 'eureka-server'
+include 'api-gateway'
+
+// ---------------------------------------------------------------------------
+// Core Business Microservices
+// ---------------------------------------------------------------------------
+include 'auth-service'
+include 'fleet-service'
+include 'order-service'
+include 'report-service'

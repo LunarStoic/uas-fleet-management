@@ -1,0 +1,89 @@
+# =============================================================================
+# API Gateway — Application Configuration
+# =============================================================================
+# Spring Cloud Gateway routes all incoming requests to the appropriate
+# microservice based on URL path predicates.
+#
+# ROUTING CONCEPTS:
+#   - Route: A mapping from a URL pattern to a target service
+#   - Predicate: A condition that must be true for the route to match
+#     (e.g., path starts with '/api/fleet/**')
+#   - Filter: Transforms the request/response (e.g., strip path prefix)
+#   - URI 'lb://': Load-balanced URI resolved via Eureka service discovery
+#
+# PATH REWRITING:
+#   The StripPrefix filter removes N path segments before forwarding.
+#   Example: StripPrefix=2 on /api/fleet/drones
+#     → Forwards as /drones to fleet-service
+#   This allows backend services to define clean REST paths without the
+#   /api/{service} prefix.
+# =============================================================================
+
+server:
+  port: 8080                          # Single entry point for all clients
+
+spring:
+  application:
+    name: api-gateway                 # Logical name registered with Eureka
+
+  # ---------------------------------------------------------------------------
+  # Gateway Route Definitions
+  # ---------------------------------------------------------------------------
+  cloud:
+    gateway:
+      # discovery.locator.enabled: true
+      #   Automatically creates routes for all services registered with Eureka.
+      #   We DISABLE this to maintain explicit control over routing rules.
+      discovery:
+        locator:
+          enabled: false
+
+      routes:
+        # ----- auth-service routes -----
+        # Matches: /api/auth/login, /api/auth/register, /api/auth/refresh, etc.
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - StripPrefix=2            # /api/auth/login → /login
+
+        # ----- fleet-service routes -----
+        # Matches: /api/fleet/uavs, /api/fleet/maintenance, etc.
+        - id: fleet-service
+          uri: lb://fleet-service
+          predicates:
+            - Path=/api/fleet/**
+          filters:
+            - StripPrefix=2            # /api/fleet/uavs → /uavs
+
+        # ----- order-service routes -----
+        # Matches: /api/orders/create, /api/orders/{id}/status, etc.
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=2            # /api/orders/create → /create
+
+        # ----- report-service routes -----
+        # Matches: /api/reports/flights, /api/reports/summary, etc.
+        - id: report-service
+          uri: lb://report-service
+          predicates:
+            - Path=/api/reports/**
+          filters:
+            - StripPrefix=2            # /api/reports/flights → /flights
+
+# ---------------------------------------------------------------------------
+# Eureka Client Configuration
+# ---------------------------------------------------------------------------
+# The gateway registers itself with Eureka and uses it to resolve
+# 'lb://' URIs to actual service instances.
+# ---------------------------------------------------------------------------
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+  instance:
+    prefer-ip-address: true           # Register with IP instead of hostname

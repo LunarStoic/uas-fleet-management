@@ -1,0 +1,19 @@
+// =============================================================================
+// Eureka Server — Build Configuration
+// =============================================================================
+// Spring Cloud Netflix Eureka Server acts as the Service Registry for the
+// entire microservices ecosystem. All services register their network
+// location (host:port) here, enabling service discovery and load balancing.
+//
+// WHY EUREKA?
+//   In a microservices architecture, services need to discover each other
+//   dynamically. Hardcoding URLs is fragile — Eureka provides a central
+//   registry where services register themselves and look up other services
+//   by their logical name (e.g., "fleet-service") rather than IP address.
+// =============================================================================
+
+dependencies {
+    // Spring Cloud Eureka Server — embeds the Netflix Eureka registry
+    // Version is managed by the Spring Cloud BOM in the root build.gradle
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+}

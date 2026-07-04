@@ -1,0 +1,118 @@
+# =============================================================================
+# UAS Fleet Management ERP — Docker Compose (Infrastructure Layer)
+# =============================================================================
+# This file defines the core infrastructure services required by the
+# microservices ecosystem. Application services (Java/Python) will be added
+# in a later phase once the boilerplate is verified.
+#
+# USAGE:
+#   docker-compose up -d              # Start all infrastructure
+#   docker-compose ps                 # Check health status
+#   docker-compose logs -f postgres   # Tail specific service logs
+#   docker-compose down -v            # Stop and remove volumes (CAUTION)
+#
+# NETWORK TOPOLOGY:
+#   All services communicate over the 'uas-net' bridge network.
+#   External access is provided via mapped ports on the host machine.
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 15 — Primary RDBMS (Database-per-Service Pattern)
+  # ---------------------------------------------------------------------------
+  # Single PostgreSQL instance hosting 4 isolated databases:
+  #   - auth_db    (auth-service)
+  #   - fleet_db   (fleet-service)
+  #   - order_db   (order-service)
+  #   - report_db  (report-service)
+  #
+  # The init-db/create-databases.sql script runs on first boot to create
+  # all databases. Subsequent restarts skip initialization (data persists
+  # in the 'postgres_data' volume).
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: uas-postgres
+    restart: unless-stopped
+    environment:
+      # Credentials pulled from .env — NEVER hardcode these values
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist database data across container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-execute database creation script on first initialization
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # pg_isready: built-in PostgreSQL utility that checks if the server
+      # is accepting connections. Returns 0 (healthy) or non-zero (unhealthy).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
+      interval: 10s      # Check every 10 seconds
+      timeout: 5s         # Fail if check takes longer than 5 seconds
+      retries: 5          # Mark unhealthy after 5 consecutive failures
+      start_period: 30s   # Grace period for initial startup
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ 3.13 — Message Broker (Async Cross-Language Communication)
+  # ---------------------------------------------------------------------------
+  # Enables asynchronous communication between Java and Python services:
+  #   order-service (Java) --publish--> [route_optimization_queue] --consume--> dispatch-engine (Python)
+  #
+  # The management plugin provides a web UI at http://localhost:15672
+  # for monitoring queues, exchanges, and message rates.
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: uas-rabbitmq
+    restart: unless-stopped
+    environment:
+      # Credentials pulled from .env — NEVER hardcode these values
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      # AMQP protocol port — used by application services
+      - "${RABBITMQ_PORT:-5672}:5672"
+      # Management UI port — accessible at http://localhost:15672
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      # Persist message data and configuration across restarts
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      # rabbitmq-diagnostics ping: verifies the broker node is running
+      # and responsive. More reliable than a simple TCP port check.
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 15s       # Check every 15 seconds
+      timeout: 10s         # RabbitMQ startup can be slow
+      retries: 5           # Mark unhealthy after 5 consecutive failures
+      start_period: 45s    # Grace period — RabbitMQ needs time to initialize
+    networks:
+      - uas-net
+
+# =============================================================================
+# Networks
+# =============================================================================
+# The 'uas-net' bridge network isolates all UAS Fleet services from other
+# Docker containers on the host. Services can reference each other by
+# container name (e.g., 'postgres', 'rabbitmq') as DNS hostnames.
+# =============================================================================
+networks:
+  uas-net:
+    driver: bridge
+    name: uas-net
+
+# =============================================================================
+# Volumes
+# =============================================================================
+# Named volumes persist data beyond container lifecycle. Use
+# 'docker-compose down -v' to remove volumes (WARNING: destroys all data).
+# =============================================================================
+volumes:
+  postgres_data:
+    name: uas-postgres-data
+  rabbitmq_data:
+    name: uas-rabbitmq-data

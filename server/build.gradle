@@ -1,0 +1,99 @@
+// =============================================================================
+// UAS Fleet Management ERP — Root Build Configuration (Gradle Groovy DSL)
+// =============================================================================
+// This root build.gradle defines shared configuration applied to ALL
+// subprojects. Individual services override or extend these settings in
+// their own build.gradle files.
+//
+// DESIGN DECISIONS:
+//   1. Spring Boot 3.2.x requires Java 17+ (Jakarta EE namespace)
+//   2. Spring Cloud 2023.0.x (codename Leyton) is the compatible BOM
+//   3. Dependency management is centralized here to avoid version conflicts
+//   4. The 'bootJar' task is disabled at root level (no executable JAR needed)
+// =============================================================================
+
+plugins {
+    // Spring Boot plugin — provides dependency management, bootJar task, etc.
+    // 'apply false' means: make plugin available to subprojects without
+    // applying it at the root level (root project has no source code).
+    id 'org.springframework.boot' version '3.2.12' apply false
+
+    // Spring Dependency Management plugin — imports BOMs (Bill of Materials)
+    // to manage transitive dependency versions consistently.
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+
+    // Java plugin — applied to all subprojects for compilation and testing
+    id 'java' apply false
+}
+
+// =============================================================================
+// Shared Configuration for ALL Subprojects
+// =============================================================================
+// The 'subprojects' block applies configuration to every subproject defined
+// in settings.gradle. This is the DRY principle — define once, use everywhere.
+// =============================================================================
+subprojects {
+
+    // Apply common plugins to every microservice
+    apply plugin: 'java'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+
+    // -------------------------------------------------------------------------
+    // Project Metadata
+    // -------------------------------------------------------------------------
+    group = 'com.uasfleet'
+    version = '0.1.0-SNAPSHOT'
+
+    // -------------------------------------------------------------------------
+    // Java Toolchain Configuration
+    // -------------------------------------------------------------------------
+    // Using Java 17 LTS — required by Spring Boot 3.x and Spring Framework 6.x
+    // The toolchain feature ensures consistent JDK version across all builds,
+    // regardless of the JDK installed on the developer's machine.
+    // -------------------------------------------------------------------------
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Repository Configuration
+    // -------------------------------------------------------------------------
+    repositories {
+        mavenCentral()
+    }
+
+    // -------------------------------------------------------------------------
+    // Spring Cloud BOM (Bill of Materials)
+    // -------------------------------------------------------------------------
+    // The BOM ensures all Spring Cloud dependencies use compatible versions.
+    // Spring Cloud 2023.0.x is the release train compatible with Spring Boot 3.2.x.
+    // -------------------------------------------------------------------------
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:2023.0.6"
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared Dependencies (applied to ALL subprojects)
+    // -------------------------------------------------------------------------
+    dependencies {
+        // Lombok — reduces boilerplate (getters, setters, builders, loggers)
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+
+        // Spring Boot testing starter — JUnit 5, Mockito, Spring Test
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    }
+
+    // -------------------------------------------------------------------------
+    // Test Configuration
+    // -------------------------------------------------------------------------
+    tasks.named('test') {
+        // Use JUnit Platform (JUnit 5) for test execution
+        useJUnitPlatform()
+    }
+}

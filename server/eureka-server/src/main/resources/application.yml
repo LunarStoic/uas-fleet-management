@@ -1,0 +1,47 @@
+# =============================================================================
+# Eureka Server — Application Configuration
+# =============================================================================
+# Spring Cloud Netflix Eureka Server configuration.
+#
+# KEY CONCEPTS:
+#   - Eureka Server itself is a Spring Boot application that can also act as
+#     a Eureka Client (registering with other Eureka instances for HA).
+#   - In a SINGLE-NODE setup (like development), we disable self-registration
+#     to prevent the server from trying to register with itself.
+#   - In PRODUCTION, you'd run multiple Eureka servers that register with
+#     each other for high availability (peer awareness).
+# =============================================================================
+
+server:
+  port: 8761                          # Standard port for Eureka Server
+
+spring:
+  application:
+    name: eureka-server               # Logical name for this service
+
+# ---------------------------------------------------------------------------
+# Eureka Server Configuration
+# ---------------------------------------------------------------------------
+eureka:
+  client:
+    # register-with-eureka: false
+    #   Prevents this server from registering ITSELF as a client.
+    #   In a single-node setup, there's no other Eureka to register with.
+    register-with-eureka: false
+
+    # fetch-registry: false
+    #   Prevents this server from fetching the registry from another Eureka.
+    #   Since this IS the registry, it doesn't need to fetch from anyone.
+    fetch-registry: false
+
+    service-url:
+      # defaultZone: the URL where this Eureka server's REST API is available.
+      # Other services will use this URL to register and discover services.
+      defaultZone: http://localhost:${server.port}/eureka/
+
+  server:
+    # wait-time-in-ms-when-sync-empty: 0
+    #   Reduces initial startup delay. In production, Eureka waits before
+    #   serving the registry to allow time for peer synchronization.
+    #   Set to 0 for faster development startup.
+    wait-time-in-ms-when-sync-empty: 0
