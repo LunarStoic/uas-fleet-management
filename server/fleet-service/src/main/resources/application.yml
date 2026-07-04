@@ -1,0 +1,39 @@
+# =============================================================================
+# Fleet Service — Application Configuration
+# =============================================================================
+# UAV fleet master data management. Stores vehicle registry, payload specs,
+# and maintenance records.
+# =============================================================================
+
+server:
+  port: 8082
+
+spring:
+  application:
+    name: fleet-service
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${FLEET_DB_NAME:fleet_db}
+    username: ${POSTGRES_USER:uasfleet_admin}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+  instance:
+    prefer-ip-address: true
+
+logging:
+  level:
+    com.uasfleet.fleet: DEBUG

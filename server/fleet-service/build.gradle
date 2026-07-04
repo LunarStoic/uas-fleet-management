@@ -1,0 +1,28 @@
+// =============================================================================
+// Fleet Service — Build Configuration
+// =============================================================================
+// Manages the master data for the UAV (Unmanned Aerial Vehicle) fleet:
+//   - UAV vehicle registry (model, serial, status)
+//   - Payload specifications and configurations
+//   - Maintenance tracking and scheduling
+//
+// This is a standard Spring Boot CRUD service with no external service calls.
+// Other services (like order-service) call this service via OpenFeign.
+// =============================================================================
+
+dependencies {
+    // Spring Boot Web — embedded Tomcat, REST controllers, Spring MVC
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Spring Data JPA — ORM layer for database operations via Hibernate
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // PostgreSQL JDBC Driver — database connectivity
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Spring Boot Validation — request payload validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Eureka Discovery Client — service registration with Eureka
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+}

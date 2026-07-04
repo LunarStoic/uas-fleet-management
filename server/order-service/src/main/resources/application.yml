@@ -1,0 +1,63 @@
+# =============================================================================
+# Order Service — Application Configuration
+# =============================================================================
+# Logistics order lifecycle management with synchronous fleet-service
+# integration (OpenFeign) and asynchronous dispatch-engine communication
+# (RabbitMQ).
+# =============================================================================
+
+server:
+  port: 8083
+
+spring:
+  application:
+    name: order-service
+
+  # ---------------------------------------------------------------------------
+  # Database Configuration (PostgreSQL — order_db)
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${ORDER_DB_NAME:order_db}
+    username: ${POSTGRES_USER:uasfleet_admin}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ Configuration
+  # ---------------------------------------------------------------------------
+  # Connects to the RabbitMQ broker for asynchronous messaging.
+  # order-service PUBLISHES route optimization requests;
+  # dispatch-engine (Python) CONSUMES them.
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER:uasfleet_mq}
+    password: ${RABBITMQ_DEFAULT_PASS:}
+
+# ---------------------------------------------------------------------------
+# Eureka Client Configuration
+# ---------------------------------------------------------------------------
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+  instance:
+    prefer-ip-address: true
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+logging:
+  level:
+    com.uasfleet.order: DEBUG
+    org.springframework.amqp: INFO    # RabbitMQ operations logging

@@ -1,0 +1,42 @@
+// =============================================================================
+// Auth Service — Build Configuration
+// =============================================================================
+// Responsible for Identity & Access Management (IAM):
+//   - User registration and authentication
+//   - JWT token generation and validation
+//   - Role-Based Access Control (RBAC)
+//
+// KEY DEPENDENCIES:
+//   - Spring Security: authentication/authorization framework
+//   - JJWT: JSON Web Token library for stateless auth
+//   - Spring Data JPA + PostgreSQL: user/role persistence
+// =============================================================================
+
+dependencies {
+    // Spring Boot Web — provides embedded Tomcat, REST support, Spring MVC
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Spring Data JPA — ORM abstraction over Hibernate for database operations
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // PostgreSQL JDBC Driver — connects Spring Data JPA to PostgreSQL
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Spring Security — comprehensive authentication & authorization framework
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // JJWT (JSON Web Token) — industry-standard library for creating and
+    // validating JWT tokens. Three modules:
+    //   - jjwt-api: interfaces and classes
+    //   - jjwt-impl: default implementations (runtime only)
+    //   - jjwt-jackson: JSON serialization using Jackson (runtime only)
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    // Spring Boot Validation — bean validation (Jakarta Validation / Hibernate Validator)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Eureka Discovery Client — registers this service with the Eureka registry
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+}

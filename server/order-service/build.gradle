@@ -1,0 +1,43 @@
+// =============================================================================
+// Order Service — Build Configuration
+// =============================================================================
+// Manages the logistics order lifecycle (PENDING → ROUTED → IN_TRANSIT → DELIVERED).
+//
+// UNIQUE INTEGRATIONS:
+//   1. OpenFeign — synchronous HTTP client to call fleet-service for UAV
+//      availability checks before assigning a drone to an order.
+//   2. Spring AMQP (RabbitMQ) — publishes messages to route_optimization_queue
+//      for asynchronous processing by the Python dispatch-engine.
+//
+// COMMUNICATION PATTERN:
+//   [order-service] --OpenFeign (sync)--> [fleet-service]
+//   [order-service] --RabbitMQ (async)--> [dispatch-engine (Python)]
+// =============================================================================
+
+dependencies {
+    // Spring Boot Web — REST controllers, embedded Tomcat
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Spring Data JPA — ORM for order persistence
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // PostgreSQL JDBC Driver
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Spring Boot Validation — request validation
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Eureka Discovery Client — service registration
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+
+    // OpenFeign — declarative REST client for inter-service communication
+    // Allows calling fleet-service using a simple Java interface annotated
+    // with @FeignClient. Spring Cloud handles service discovery, load
+    // balancing, and HTTP client management automatically.
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+
+    // Spring AMQP (RabbitMQ) — message publishing to RabbitMQ queues
+    // Used to send route optimization requests asynchronously to the
+    // Python dispatch-engine service.
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+}

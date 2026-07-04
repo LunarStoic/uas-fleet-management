@@ -1,0 +1,67 @@
+# =============================================================================
+# Auth Service — Application Configuration
+# =============================================================================
+# Identity & Access Management microservice. Handles user authentication,
+# JWT token generation/validation, and role-based access control.
+#
+# ENVIRONMENT VARIABLE INTERPOLATION:
+#   ${VARIABLE_NAME:default_value} syntax allows overriding values via
+#   environment variables (e.g., Docker, .env files) while providing
+#   sensible defaults for local development.
+# =============================================================================
+
+server:
+  port: 8081                          # Auth service runs on port 8081
+
+spring:
+  application:
+    name: auth-service                # Logical name for Eureka registration
+
+  # ---------------------------------------------------------------------------
+  # Database Configuration (PostgreSQL)
+  # ---------------------------------------------------------------------------
+  # Connects to the auth_db database on the shared PostgreSQL instance.
+  # All credentials are injected via environment variables — NEVER hardcoded.
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${AUTH_DB_NAME:auth_db}
+    username: ${POSTGRES_USER:uasfleet_admin}
+    password: ${POSTGRES_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate Configuration
+  # ---------------------------------------------------------------------------
+  jpa:
+    # hibernate.ddl-auto controls schema generation:
+    #   - update: auto-creates/alters tables to match entities (dev only)
+    #   - validate: only validates schema matches entities (production)
+    #   - none: disables DDL management (use Flyway/Liquibase instead)
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    # show-sql: logs all SQL statements to console (useful for debugging)
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        # PostgreSQL-optimized dialect for Hibernate 6.x (Spring Boot 3.x)
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Format SQL output for readability when show-sql is enabled
+        format_sql: true
+
+# ---------------------------------------------------------------------------
+# Eureka Client Configuration
+# ---------------------------------------------------------------------------
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+  instance:
+    prefer-ip-address: true
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+logging:
+  level:
+    com.uasfleet.auth: DEBUG          # Debug logging for auth service code
+    org.springframework.security: INFO # Security framework logging
