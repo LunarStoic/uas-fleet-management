@@ -1,0 +1,34 @@
+# =============================================================================
+# Dispatch Engine — Python Dependencies
+# =============================================================================
+# This file lists all Python packages required by the dispatch-engine service.
+#
+# INSTALL: pip install -r requirements.txt
+# VIRTUAL ENV (recommended):
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)
+#   source .venv/bin/activate     (Linux/Mac)
+#   pip install -r requirements.txt
+# =============================================================================
+
+# FastAPI — high-performance async web framework for building REST APIs
+# Used for health check endpoints and potential future REST interfaces
+fastapi==0.115.12
+
+# Uvicorn — ASGI server to run FastAPI applications
+# Production-grade server with async support
+uvicorn[standard]==0.34.3
+
+# Pika — RabbitMQ client library for Python (AMQP 0-9-1 protocol)
+# Used to consume messages from 'route_optimization_queue' published
+# by the Java order-service
+pika==1.3.2
+
+# OR-Tools — Google's Operations Research suite
+# Provides Vehicle Routing Problem (VRP) solvers for optimal delivery
+# route computation. This is the core algorithm engine.
+ortools==9.12.4544
+
+# Python-dotenv — loads environment variables from .env files
+# Ensures consistent configuration between Python and Java services
+python-dotenv==1.1.0

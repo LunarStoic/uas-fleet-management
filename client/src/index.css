@@ -1,0 +1,158 @@
+/* =============================================================================
+ * UAS Fleet Management — Global Styles
+ * =============================================================================
+ * Tailwind CSS v4 entry point. Uses the new @import syntax for Tailwind.
+ * Custom theme tokens and component styles are defined below.
+ * ============================================================================= */
+
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+ * Leaflet CSS — Required for react-leaflet map rendering
+ * ---------------------------------------------------------------------------
+ * Without this import, map tiles and controls will not display correctly.
+ * The CSS is imported from the leaflet package in node_modules.
+ * --------------------------------------------------------------------------- */
+@import "leaflet/dist/leaflet.css";
+
+/* ---------------------------------------------------------------------------
+ * Custom Theme Configuration (Tailwind v4 CSS-first)
+ * ---------------------------------------------------------------------------
+ * Tailwind v4 uses @theme to define design tokens directly in CSS.
+ * These tokens generate corresponding utility classes automatically.
+ * --------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Aerospace accent colors */
+  --color-hud-cyan: #22d3ee;
+  --color-hud-emerald: #34d399;
+  --color-hud-amber: #fbbf24;
+  --color-hud-red: #f87171;
+
+  /* Glass panel backgrounds */
+  --color-glass-panel: rgba(30, 41, 59, 0.6);
+  --color-glass-border: rgba(71, 85, 105, 0.5);
+
+  /* Sidebar */
+  --color-sidebar-bg: #0f172a;
+  --color-sidebar-hover: rgba(34, 211, 238, 0.1);
+  --color-sidebar-active: rgba(34, 211, 238, 0.2);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base Layer — Applied to all elements
+ * --------------------------------------------------------------------------- */
+@layer base {
+  body {
+    @apply bg-slate-900 text-slate-100 antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Custom dark scrollbar for data panels */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Component Layer — Reusable component classes
+ * --------------------------------------------------------------------------- */
+@layer components {
+  /* Glassmorphism card used throughout the dashboard */
+  .glass-panel {
+    @apply bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-xl;
+  }
+
+  /* Status badge styles for order lifecycle */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide uppercase;
+  }
+  .badge-pending {
+    @apply bg-amber-500/20 text-amber-400;
+  }
+  .badge-routed {
+    @apply bg-cyan-500/20 text-cyan-400;
+  }
+  .badge-in-transit {
+    @apply bg-blue-500/20 text-blue-400;
+  }
+  .badge-delivered {
+    @apply bg-emerald-500/20 text-emerald-400;
+  }
+  .badge-cancelled {
+    @apply bg-slate-500/20 text-slate-400;
+  }
+  .badge-failed {
+    @apply bg-red-500/20 text-red-400;
+  }
+
+  /* Sidebar nav link */
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400
+           hover:bg-[var(--color-sidebar-hover)] hover:text-slate-200
+           transition-all duration-200;
+  }
+  .nav-link-active {
+    @apply bg-[var(--color-sidebar-active)] text-cyan-400
+           border-l-2 border-cyan-400;
+  }
+
+  /* Pulsing live indicator */
+  .pulse-live {
+    @apply relative;
+  }
+  .pulse-live::after {
+    content: "";
+    @apply absolute top-0 right-0 h-2 w-2 bg-emerald-400 rounded-full;
+    animation: pulse-ring 1.5s ease-in-out infinite;
+  }
+
+  /* Leaflet overrides for dark theme */
+  .leaflet-container {
+    background: #0f172a !important;
+  }
+  .leaflet-control-attribution {
+    @apply !bg-slate-800/80 !text-slate-500 text-[10px];
+  }
+  .leaflet-control-zoom a {
+    @apply !bg-slate-800/90 !text-slate-300 !border-slate-700 hover:!bg-slate-700;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Animations
+ * --------------------------------------------------------------------------- */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

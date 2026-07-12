@@ -22,8 +22,9 @@ plugins {
     // to manage transitive dependency versions consistently.
     id 'io.spring.dependency-management' version '1.1.7' apply false
 
-    // Java plugin — applied to all subprojects for compilation and testing
-    id 'java' apply false
+    // NOTE: The 'java' core plugin is applied directly in the subprojects
+    // block below (not here). Gradle 9.x does not allow 'apply false'
+    // on core plugins — only external/community plugins support that syntax.
 }
 
 // =============================================================================
@@ -46,16 +47,19 @@ subprojects {
     version = '0.1.0-SNAPSHOT'
 
     // -------------------------------------------------------------------------
-    // Java Toolchain Configuration
+    // Java Compatibility Configuration
     // -------------------------------------------------------------------------
-    // Using Java 17 LTS — required by Spring Boot 3.x and Spring Framework 6.x
-    // The toolchain feature ensures consistent JDK version across all builds,
-    // regardless of the JDK installed on the developer's machine.
+    // Target Java 17 LTS — required by Spring Boot 3.x and Spring Framework 6.x.
+    // Using sourceCompatibility/targetCompatibility instead of toolchain so
+    // that any JDK >= 17 (including JDK 25) can compile the project without
+    // needing a separate JDK 17 installation.
+    //
+    // Gradle 9.x requires these properties to be set inside the java {} block
+    // (they are no longer direct project properties).
     // -------------------------------------------------------------------------
     java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(17)
-        }
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     // -------------------------------------------------------------------------
@@ -82,8 +86,10 @@ subprojects {
     // -------------------------------------------------------------------------
     dependencies {
         // Lombok — reduces boilerplate (getters, setters, builders, loggers)
-        compileOnly 'org.projectlombok:lombok'
-        annotationProcessor 'org.projectlombok:lombok'
+        // Version pinned to 1.18.46 for Java 25 compatibility (Spring Boot
+        // 3.2.x BOM ships an older Lombok that doesn't support JDK 25+)
+        compileOnly 'org.projectlombok:lombok:1.18.46'
+        annotationProcessor 'org.projectlombok:lombok:1.18.46'
 
         // Spring Boot testing starter — JUnit 5, Mockito, Spring Test
         testImplementation 'org.springframework.boot:spring-boot-starter-test'

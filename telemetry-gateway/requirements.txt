@@ -1,0 +1,29 @@
+# =============================================================================
+# Telemetry Gateway — Python Dependencies
+# =============================================================================
+# This file lists all Python packages required by the telemetry-gateway service.
+#
+# INSTALL: pip install -r requirements.txt
+# VIRTUAL ENV (recommended):
+#   python -m venv .venv
+#   .venv\Scripts\activate        (Windows)
+#   source .venv/bin/activate     (Linux/Mac)
+#   pip install -r requirements.txt
+# =============================================================================
+
+# FastAPI — async web framework for REST + WebSocket endpoints
+fastapi==0.115.12
+
+# Uvicorn — ASGI server with WebSocket support
+uvicorn[standard]==0.34.3
+
+# pymavlink — MAVLink protocol library for drone communication
+# Provides bindings for MAVLink v2 protocol used by ArduPilot/PX4 autopilots.
+# In production, this connects to SITL (Software In The Loop) flight simulators.
+pymavlink==2.4.42
+
+# Websockets — WebSocket support (used internally by FastAPI/uvicorn)
+websockets==15.0.1
+
+# Python-dotenv — loads environment variables from .env files
+python-dotenv==1.1.0
