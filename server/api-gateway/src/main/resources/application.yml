@@ -31,6 +31,25 @@ spring:
   # ---------------------------------------------------------------------------
   cloud:
     gateway:
+      # -----------------------------------------------------------------------
+      # CORS Configuration — Allow React Client (Vite dev server)
+      # -----------------------------------------------------------------------
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:5173"
+              - "http://localhost:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+
       # discovery.locator.enabled: true
       #   Automatically creates routes for all services registered with Eureka.
       #   We DISABLE this to maintain explicit control over routing rules.

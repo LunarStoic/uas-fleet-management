@@ -91,7 +91,7 @@ export default function FleetConfig() {
   useEffect(() => {
     async function fetchFleet() {
       try {
-        const response = await api.get('/uavs');
+        const response = await api.get('/fleet/uavs');
         setUavs(response.data);
       } catch (err) {
         console.error('Failed to fetch fleet:', err);
