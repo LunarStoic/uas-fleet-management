@@ -1,104 +1,315 @@
 # =============================================================================
-# UAS Fleet Management ERP — Docker Compose (Infrastructure Layer)
+# UAS Fleet Management — Docker Compose (Full Stack)
 # =============================================================================
-# This file defines the core infrastructure services required by the
-# microservices ecosystem. Application services (Java/Python) will be added
-# in a later phase once the boilerplate is verified.
+# Runs the ENTIRE application stack with a single command:
 #
-# USAGE:
-#   docker-compose up -d              # Start all infrastructure
-#   docker-compose ps                 # Check health status
-#   docker-compose logs -f postgres   # Tail specific service logs
-#   docker-compose down -v            # Stop and remove volumes (CAUTION)
+#   docker-compose up -d --build
 #
-# NETWORK TOPOLOGY:
-#   All services communicate over the 'uas-net' bridge network.
-#   External access is provided via mapped ports on the host machine.
+# ARCHITECTURE (11 services):
+#   Infrastructure:  postgres, rabbitmq
+#   Service Discovery: eureka-server
+#   API Gateway:     api-gateway
+#   Java Services:   auth-service, fleet-service, order-service, report-service
+#   Python Services: dispatch-engine, telemetry-gateway
+#   Frontend:        client (Nginx)
+#
+# STARTUP ORDER (managed by depends_on + healthchecks):
+#   postgres/rabbitmq → eureka-server → java services → api-gateway → client
 # =============================================================================
 
 services:
 
+  # ===========================================================================
+  # INFRASTRUCTURE
+  # ===========================================================================
+
   # ---------------------------------------------------------------------------
-  # PostgreSQL 15 — Primary RDBMS (Database-per-Service Pattern)
-  # ---------------------------------------------------------------------------
-  # Single PostgreSQL instance hosting 4 isolated databases:
-  #   - auth_db    (auth-service)
-  #   - fleet_db   (fleet-service)
-  #   - order_db   (order-service)
-  #   - report_db  (report-service)
-  #
-  # The init-db/create-databases.sql script runs on first boot to create
-  # all databases. Subsequent restarts skip initialization (data persists
-  # in the 'postgres_data' volume).
+  # PostgreSQL 15 — Primary RDBMS (Database-per-Service)
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:15-alpine
     container_name: uas-postgres
     restart: unless-stopped
     environment:
-      # Credentials pulled from .env — NEVER hardcode these values
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
-      # Persist database data across container restarts
       - postgres_data:/var/lib/postgresql/data
-      # Auto-execute database creation script on first initialization
       - ./init-db:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # pg_isready: built-in PostgreSQL utility that checks if the server
-      # is accepting connections. Returns 0 (healthy) or non-zero (unhealthy).
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
-      interval: 10s      # Check every 10 seconds
-      timeout: 5s         # Fail if check takes longer than 5 seconds
-      retries: 5          # Mark unhealthy after 5 consecutive failures
-      start_period: 30s   # Grace period for initial startup
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d report_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     networks:
       - uas-net
 
   # ---------------------------------------------------------------------------
-  # RabbitMQ 3.13 — Message Broker (Async Cross-Language Communication)
-  # ---------------------------------------------------------------------------
-  # Enables asynchronous communication between Java and Python services:
-  #   order-service (Java) --publish--> [route_optimization_queue] --consume--> dispatch-engine (Python)
-  #
-  # The management plugin provides a web UI at http://localhost:15672
-  # for monitoring queues, exchanges, and message rates.
+  # RabbitMQ 3.13 — Message Broker
   # ---------------------------------------------------------------------------
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: uas-rabbitmq
     restart: unless-stopped
     environment:
-      # Credentials pulled from .env — NEVER hardcode these values
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     ports:
-      # AMQP protocol port — used by application services
       - "${RABBITMQ_PORT:-5672}:5672"
-      # Management UI port — accessible at http://localhost:15672
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
-      # Persist message data and configuration across restarts
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      # rabbitmq-diagnostics ping: verifies the broker node is running
-      # and responsive. More reliable than a simple TCP port check.
       test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
-      interval: 15s       # Check every 15 seconds
-      timeout: 10s         # RabbitMQ startup can be slow
-      retries: 5           # Mark unhealthy after 5 consecutive failures
-      start_period: 45s    # Grace period — RabbitMQ needs time to initialize
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - uas-net
+
+  # ===========================================================================
+  # JAVA MICROSERVICES
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Eureka Server — Service Discovery (MUST start first)
+  # ---------------------------------------------------------------------------
+  eureka-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: eureka-server
+    container_name: uas-eureka
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      EUREKA_HOST: eureka-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # API Gateway — Single Entry Point (port 8080)
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: api-gateway
+    container_name: uas-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # Auth Service (port 8081)
+  # ---------------------------------------------------------------------------
+  auth-service:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: auth-service
+    container_name: uas-auth
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      AUTH_DB_NAME: ${AUTH_DB_NAME}
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      JPA_DDL_AUTO: update
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # Fleet Service (port 8082)
+  # ---------------------------------------------------------------------------
+  fleet-service:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: fleet-service
+    container_name: uas-fleet
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      FLEET_DB_NAME: ${FLEET_DB_NAME}
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      JPA_DDL_AUTO: update
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # Order Service (port 8083)
+  # ---------------------------------------------------------------------------
+  order-service:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: order-service
+    container_name: uas-order
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ORDER_DB_NAME: ${ORDER_DB_NAME}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      JPA_DDL_AUTO: update
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # Report Service (port 8084)
+  # ---------------------------------------------------------------------------
+  report-service:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: report-service
+    container_name: uas-report
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REPORT_DB_NAME: ${REPORT_DB_NAME}
+      EUREKA_HOST: eureka-server
+      EUREKA_PORT: 8761
+      JPA_DDL_AUTO: update
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ===========================================================================
+  # PYTHON SERVICES
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Telemetry Gateway — WebSocket Server (port 8000)
+  # ---------------------------------------------------------------------------
+  telemetry-gateway:
+    build:
+      context: ./telemetry-gateway
+      dockerfile: Dockerfile
+    container_name: uas-telemetry
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    networks:
+      - uas-net
+
+  # ---------------------------------------------------------------------------
+  # Dispatch Engine — VRP Route Optimizer (port 8091)
+  # ---------------------------------------------------------------------------
+  dispatch-engine:
+    build:
+      context: ./dispatch-engine
+      dockerfile: Dockerfile
+    container_name: uas-dispatch
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_PASS: ${RABBITMQ_DEFAULT_PASS}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - uas-net
+
+  # ===========================================================================
+  # FRONTEND
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # React Client — Nginx (port 3000 → maps to container port 80)
+  # ---------------------------------------------------------------------------
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: uas-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api-gateway
+      - telemetry-gateway
     networks:
       - uas-net
 
 # =============================================================================
 # Networks
-# =============================================================================
-# The 'uas-net' bridge network isolates all UAS Fleet services from other
-# Docker containers on the host. Services can reference each other by
-# container name (e.g., 'postgres', 'rabbitmq') as DNS hostnames.
 # =============================================================================
 networks:
   uas-net:
@@ -107,9 +318,6 @@ networks:
 
 # =============================================================================
 # Volumes
-# =============================================================================
-# Named volumes persist data beyond container lifecycle. Use
-# 'docker-compose down -v' to remove volumes (WARNING: destroys all data).
 # =============================================================================
 volumes:
   postgres_data:

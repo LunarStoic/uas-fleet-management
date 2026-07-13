@@ -13,11 +13,11 @@
 # =============================================================================
 
 server:
-  port: 8761                          # Standard port for Eureka Server
+  port: 8761 # Standard port for Eureka Server
 
 spring:
   application:
-    name: eureka-server               # Logical name for this service
+    name: eureka-server # Logical name for this service
 
 # ---------------------------------------------------------------------------
 # Eureka Server Configuration
@@ -37,7 +37,7 @@ eureka:
     service-url:
       # defaultZone: the URL where this Eureka server's REST API is available.
       # Other services will use this URL to register and discover services.
-      defaultZone: http://localhost:${server.port}/eureka/
+      defaultZone: http://${EUREKA_HOST:localhost}:${server.port}/eureka/
 
   server:
     # wait-time-in-ms-when-sync-empty: 0

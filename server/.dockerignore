@@ -1,0 +1,17 @@
+# Build outputs
+build/
+bin/
+out/
+
+# Gradle
+.gradle/
+!gradle/wrapper/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
