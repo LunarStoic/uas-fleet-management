@@ -19,15 +19,15 @@ import java.util.List;
  * Exposes order CRUD endpoints consumed by the React client via API Gateway.
  *
  * REQUEST FLOW:
- *   Client → GET /api/orders → Gateway strips /api/orders → GET /
- *   Client → POST /api/orders → Gateway strips /api/orders → POST /
- *   Client → PATCH /api/orders/{id}/status → Gateway → PATCH /{id}/status
+ * Client → GET /api/orders → Gateway strips /api/orders → GET /
+ * Client → POST /api/orders → Gateway strips /api/orders → POST /
+ * Client → PATCH /api/orders/{id}/status → Gateway → PATCH /{id}/status
  *
  * ENDPOINTS:
- *   GET    /            — List all orders
- *   GET    /{id}        — Get order by ID
- *   POST   /            — Create new order
- *   PATCH  /{id}/status — Update order status
+ * GET / — List all orders
+ * GET /{id} — Get order by ID
+ * POST / — Create new order
+ * PATCH /{id}/status — Update order status
  * =============================================================================
  */
 @RestController
@@ -73,5 +73,24 @@ public class OrderController {
             @Valid @RequestBody UpdateStatusRequest request) {
         LogisticsOrder updated = orderService.updateOrderStatus(id, request.getStatus());
         return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Trigger the dispatch pipeline for a PENDING order.
+     *
+     * Validates UAV availability via fleet-service, publishes a route
+     * optimization message to RabbitMQ, and transitions the order to
+     * DISPATCHING. The dispatch-engine will pick it up asynchronously.
+     *
+     * Used by OrderLogistics page "Generate Route" button.
+     */
+    @PostMapping("/{id}/generate-route")
+    public ResponseEntity<LogisticsOrder> generateRoute(@PathVariable Long id) {
+        try {
+            LogisticsOrder updated = orderService.generateRoute(id);
+            return ResponseEntity.ok(updated);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 }

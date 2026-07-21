@@ -1,133 +1,249 @@
 /* =============================================================================
- * UAS Fleet Management — Global Styles
- * =============================================================================
- * Tailwind CSS v4 entry point. Uses the new @import syntax for Tailwind.
- * Custom theme tokens and component styles are defined below.
+ * UAS Fleet Management — Global Styles (Premium Aerospace Dark Theme)
  * ============================================================================= */
 
 @import "tailwindcss";
-
-/* ---------------------------------------------------------------------------
- * Leaflet CSS — Required for react-leaflet map rendering
- * ---------------------------------------------------------------------------
- * Without this import, map tiles and controls will not display correctly.
- * The CSS is imported from the leaflet package in node_modules.
- * --------------------------------------------------------------------------- */
 @import "leaflet/dist/leaflet.css";
 
 /* ---------------------------------------------------------------------------
- * Custom Theme Configuration (Tailwind v4 CSS-first)
- * ---------------------------------------------------------------------------
- * Tailwind v4 uses @theme to define design tokens directly in CSS.
- * These tokens generate corresponding utility classes automatically.
+ * Custom Theme Tokens (Tailwind v4 CSS-first)
  * --------------------------------------------------------------------------- */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 
-  /* Aerospace accent colors */
+  /* HUD accent palette */
   --color-hud-cyan: #22d3ee;
   --color-hud-emerald: #34d399;
   --color-hud-amber: #fbbf24;
   --color-hud-red: #f87171;
+  --color-hud-violet: #a78bfa;
+  --color-hud-blue: #60a5fa;
 
-  /* Glass panel backgrounds */
-  --color-glass-panel: rgba(30, 41, 59, 0.6);
-  --color-glass-border: rgba(71, 85, 105, 0.5);
+  /* Glassmorphism surfaces */
+  --color-glass-panel: rgba(15, 23, 42, 0.7);
+  --color-glass-border: rgba(51, 65, 85, 0.6);
 
   /* Sidebar */
-  --color-sidebar-bg: #0f172a;
-  --color-sidebar-hover: rgba(34, 211, 238, 0.1);
-  --color-sidebar-active: rgba(34, 211, 238, 0.2);
+  --color-sidebar-bg: #080e1a;
+  --color-sidebar-hover: rgba(34, 211, 238, 0.08);
+  --color-sidebar-active: rgba(34, 211, 238, 0.14);
+
+  /* Surface scale */
+  --color-surface-0: #060d1a;
+  --color-surface-1: #0f172a;
+  --color-surface-2: #1e293b;
+  --color-surface-3: #334155;
 }
 
 /* ---------------------------------------------------------------------------
- * Base Layer — Applied to all elements
+ * Google Fonts
+ * --------------------------------------------------------------------------- */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+
+/* ---------------------------------------------------------------------------
+ * Base
  * --------------------------------------------------------------------------- */
 @layer base {
-  body {
-    @apply bg-slate-900 text-slate-100 antialiased;
-    font-family: var(--font-sans);
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
   }
 
-  /* Custom dark scrollbar for data panels */
+  body {
+    @apply antialiased;
+    background-color: #060d1a;
+    color: #e2e8f0;
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Thin scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 4px;
+    height: 4px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #334155;
-    border-radius: 3px;
+    background: #1e293b;
+    border-radius: 99px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #334155;
   }
 }
 
 /* ---------------------------------------------------------------------------
- * Component Layer — Reusable component classes
+ * Components
  * --------------------------------------------------------------------------- */
 @layer components {
-  /* Glassmorphism card used throughout the dashboard */
+  /* ── Glassmorphism panels ── */
   .glass-panel {
-    @apply bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-xl;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(51, 65, 85, 0.55);
+    border-radius: 12px;
   }
 
-  /* Status badge styles for order lifecycle */
+  .glass-panel-bright {
+    background: rgba(30, 41, 59, 0.55);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(71, 85, 105, 0.5);
+    border-radius: 12px;
+  }
+
+  /* Subtle inner glow on focused/active panels */
+  .glass-panel-glow {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(34, 211, 238, 0.18);
+    border-radius: 12px;
+    box-shadow:
+      0 0 24px -8px rgba(34, 211, 238, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* ── Status badges ── */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide uppercase;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide;
   }
   .badge-pending {
-    @apply bg-amber-500/20 text-amber-400;
+    @apply bg-amber-500/15  text-amber-300  ring-1 ring-amber-500/25;
+  }
+  .badge-dispatching {
+    @apply bg-blue-500/15   text-blue-300   ring-1 ring-blue-500/25;
   }
   .badge-routed {
-    @apply bg-cyan-500/20 text-cyan-400;
+    @apply bg-cyan-500/15   text-cyan-300   ring-1 ring-cyan-500/25;
   }
   .badge-in-transit {
-    @apply bg-blue-500/20 text-blue-400;
+    @apply bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/25;
   }
   .badge-delivered {
-    @apply bg-emerald-500/20 text-emerald-400;
+    @apply bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25;
   }
   .badge-cancelled {
-    @apply bg-slate-500/20 text-slate-400;
+    @apply bg-slate-500/15  text-slate-400  ring-1 ring-slate-500/25;
   }
   .badge-failed {
-    @apply bg-red-500/20 text-red-400;
+    @apply bg-red-500/15    text-red-400    ring-1 ring-red-500/25;
   }
 
-  /* Sidebar nav link */
+  /* ── Input field system ── */
+  .field-input {
+    @apply w-full rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-500
+           transition-all duration-200 outline-none;
+    background: rgba(6, 13, 26, 0.8);
+    border: 1px solid rgba(51, 65, 85, 0.7);
+  }
+  .field-input:focus {
+    border-color: rgba(34, 211, 238, 0.45);
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+  }
+
+  /* ── Sidebar nav links ── */
   .nav-link {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400
-           hover:bg-[var(--color-sidebar-hover)] hover:text-slate-200
-           transition-all duration-200;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-400
+           transition-all duration-200 relative;
+  }
+  .nav-link:hover {
+    background: var(--color-sidebar-hover);
+    @apply text-slate-200;
   }
   .nav-link-active {
-    @apply bg-[var(--color-sidebar-active)] text-cyan-400
-           border-l-2 border-cyan-400;
+    background: var(--color-sidebar-active);
+    @apply text-cyan-400;
+    box-shadow: inset 2px 0 0 #22d3ee;
   }
 
-  /* Pulsing live indicator */
-  .pulse-live {
-    @apply relative;
+  /* ── Metric card ── */
+  .metric-card {
+    background: rgba(6, 13, 26, 0.6);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+    border-radius: 10px;
+    @apply p-3 flex items-center gap-3;
+    transition:
+      border-color 0.2s,
+      background 0.2s;
   }
-  .pulse-live::after {
-    content: "";
-    @apply absolute top-0 right-0 h-2 w-2 bg-emerald-400 rounded-full;
-    animation: pulse-ring 1.5s ease-in-out infinite;
+  .metric-card:hover {
+    border-color: rgba(71, 85, 105, 0.8);
+    background: rgba(15, 23, 42, 0.7);
   }
 
-  /* Leaflet overrides for dark theme */
+  /* ── Table system ── */
+  .data-table thead tr {
+    border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  }
+  .data-table th {
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest;
+    color: #64748b;
+  }
+  .data-table tbody tr {
+    border-bottom: 1px solid rgba(30, 41, 59, 0.6);
+    transition: background 0.15s;
+  }
+  .data-table tbody tr:last-child {
+    border-bottom: none;
+  }
+  .data-table tbody tr:hover {
+    background: rgba(30, 41, 59, 0.4);
+  }
+  .data-table td {
+    @apply px-4 py-3;
+  }
+
+  /* ── Cyan accent button ── */
+  .btn-primary {
+    @apply flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+           text-slate-900 transition-all duration-200;
+    background: linear-gradient(135deg, #22d3ee, #06b6d4);
+    box-shadow: 0 4px 14px -4px rgba(34, 211, 238, 0.35);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px -4px rgba(34, 211, 238, 0.5);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  .btn-ghost {
+    @apply flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium
+           text-slate-400 transition-all duration-200;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(51, 65, 85, 0.5);
+  }
+  .btn-ghost:hover {
+    @apply text-slate-200;
+    border-color: rgba(71, 85, 105, 0.8);
+    background: rgba(30, 41, 59, 0.8);
+  }
+
+  /* ── Grid scan lines overlay (aesthetics) ── */
+  .hud-grid {
+    background-image:
+      linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Leaflet overrides */
   .leaflet-container {
-    background: #0f172a !important;
+    background: #060d1a !important;
   }
   .leaflet-control-attribution {
-    @apply !bg-slate-800/80 !text-slate-500 text-[10px];
+    @apply !bg-slate-900/80 !text-slate-500 text-[10px];
   }
   .leaflet-control-zoom a {
-    @apply !bg-slate-800/90 !text-slate-300 !border-slate-700 hover:!bg-slate-700;
+    @apply !bg-slate-900/90 !text-slate-300 !border-slate-700;
+  }
+  .leaflet-control-zoom a:hover {
+    @apply !bg-slate-800;
   }
 }
 
@@ -136,23 +252,65 @@
  * --------------------------------------------------------------------------- */
 @keyframes pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+    box-shadow: 0 0 0 8px rgba(52, 211, 153, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
   }
 }
 
-@keyframes fade-in {
+@keyframes slide-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.25s ease-out;
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 6px;
 }

@@ -5,6 +5,8 @@ import com.uasfleet.order.domain.entity.LogisticsOrder;
 import com.uasfleet.order.domain.entity.OrderStatusHistory;
 import com.uasfleet.order.domain.repository.LogisticsOrderRepository;
 import com.uasfleet.order.domain.repository.OrderStatusHistoryRepository;
+import com.uasfleet.order.adapter.client.FleetServiceClient;
+import com.uasfleet.order.infrastructure.messaging.RouteOptimizationPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,22 +15,24 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * =============================================================================
  * Order Service — Logistics Order Business Logic
  * =============================================================================
  * Manages the complete lifecycle of delivery orders:
- *   - Create orders with auto-generated order codes
- *   - List and retrieve orders
- *   - Update order status with audit trail
+ * - Create orders with auto-generated order codes
+ * - List and retrieve orders
+ * - Update order status with audit trail
  *
  * ORDER CODE FORMAT: ORD-YYYYMMDD-NNNN (e.g., ORD-20260704-0001)
  *
  * FUTURE INTEGRATION:
- *   - After creating an order, publish to RabbitMQ for route optimization
- *   - Before assigning UAV, validate via OpenFeign to fleet-service
+ * - After creating an order, publish to RabbitMQ for route optimization
+ * - Before assigning UAV, validate via OpenFeign to fleet-service
  * =============================================================================
  */
 @Service
@@ -38,6 +42,8 @@ public class OrderService {
 
     private final LogisticsOrderRepository orderRepository;
     private final OrderStatusHistoryRepository statusHistoryRepository;
+    private final RouteOptimizationPublisher routePublisher;
+    private final FleetServiceClient fleetServiceClient;
 
     /**
      * Retrieves all orders, sorted by creation date descending.
@@ -117,7 +123,56 @@ public class OrderService {
         return updatedOrder;
     }
 
-    // -------------------------------------------------------------------------
+    /**
+     * Triggers the dispatch pipeline for a PENDING order.
+     *
+     * Steps:
+     * 1. Validate the order exists and is PENDING
+     * 2. Check that at least one IDLE UAV is available via FleetServiceClient
+     * 3. Publish a route optimization message to RabbitMQ
+     * 4. Transition order status to DISPATCHING
+     *
+     * @param orderId the ID of the PENDING order to dispatch
+     * @return the updated order (now DISPATCHING)
+     * @throws IllegalStateException if order is not PENDING or no UAVs available
+     */
+    @Transactional
+    public LogisticsOrder generateRoute(Long orderId) {
+        LogisticsOrder order = getOrderById(orderId);
+
+        // 1. Validate state
+        if (!"PENDING".equals(order.getStatus())) {
+            throw new IllegalStateException(
+                    "Order " + order.getOrderCode() + " is not PENDING (current: " + order.getStatus() + ")");
+        }
+
+        // 2. Check UAV availability
+        var availableUavs = fleetServiceClient.getAvailableUavs();
+        if (availableUavs == null || availableUavs.isEmpty()) {
+            throw new IllegalStateException("No IDLE UAVs available for dispatch");
+        }
+        log.info("Found {} available UAV(s) for Order {}", availableUavs.size(), order.getOrderCode());
+
+        // 3. Publish to RabbitMQ for the dispatch-engine
+        Map<String, Object> message = new HashMap<>();
+        message.put("orderId", order.getId());
+        message.put("orderCode", order.getOrderCode());
+        message.put("origin", Map.of(
+                "lat", order.getOriginLatitude(),
+                "lng", order.getOriginLongitude()));
+        message.put("destination", Map.of(
+                "lat", order.getDestLatitude(),
+                "lng", order.getDestLongitude()));
+        message.put("payloadWeight", order.getPayloadWeightKg());
+        message.put("priority", order.getPriority());
+
+        routePublisher.publishOptimizationRequest(message);
+        log.info("Route optimization message published for Order {}", order.getOrderCode());
+
+        // 4. Transition order status
+        return updateOrderStatus(orderId, "DISPATCHING");
+    }
+
     // Private Helpers
     // -------------------------------------------------------------------------
 
@@ -134,7 +189,7 @@ public class OrderService {
      * Records a status change in the order_status_history table.
      */
     private void recordStatusChange(LogisticsOrder order, String previousStatus,
-                                     String newStatus, String changedBy, String reason) {
+            String newStatus, String changedBy, String reason) {
         OrderStatusHistory history = OrderStatusHistory.builder()
                 .order(order)
                 .previousStatus(previousStatus)

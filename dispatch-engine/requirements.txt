@@ -32,3 +32,7 @@ ortools==9.12.4544
 # Python-dotenv — loads environment variables from .env files
 # Ensures consistent configuration between Python and Java services
 python-dotenv==1.1.0
+
+# HTTPX — async HTTP client for calling fleet-service, order-service, and
+# telemetry-gateway REST APIs from within the dispatch engine
+httpx==0.28.1

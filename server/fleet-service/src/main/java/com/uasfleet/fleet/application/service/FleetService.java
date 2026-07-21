@@ -1,5 +1,6 @@
 package com.uasfleet.fleet.application.service;
 
+import com.uasfleet.fleet.application.dto.CreateUavRequest;
 import com.uasfleet.fleet.domain.entity.Uav;
 import com.uasfleet.fleet.domain.repository.UavRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,9 +19,9 @@ import java.util.List;
  * via OpenFeign (e.g., order-service checks UAV availability).
  *
  * OPERATIONS:
- *   - List all UAVs
- *   - Get UAV by ID
- *   - Find available (IDLE) UAVs for mission assignment
+ * - List all UAVs
+ * - Get UAV by ID
+ * - Find available (IDLE) UAVs for mission assignment
  * =============================================================================
  */
 @Service
@@ -59,5 +60,51 @@ public class FleetService {
     public List<Uav> getAvailableUavs() {
         log.debug("Fetching available (IDLE) UAVs");
         return uavRepository.findByStatus("IDLE");
+    }
+
+    /**
+     * Registers a new UAV in the fleet.
+     * Initial status is always IDLE.
+     *
+     * @param request validated UAV registration payload
+     * @return the persisted UAV entity
+     */
+    @Transactional
+    public Uav createUav(CreateUavRequest request) {
+        Uav uav = Uav.builder()
+                .registrationCode(request.getRegistrationCode())
+                .model(request.getModel())
+                .manufacturer(request.getManufacturer())
+                .serialNumber(request.getSerialNumber())
+                .maxAltitudeM(request.getMaxAltitudeM())
+                .maxSpeedMs(request.getMaxSpeedMs())
+                .maxRangeKm(request.getMaxRangeKm())
+                .batteryCapacityWh(request.getBatteryCapacityWh())
+                .currentLatitude(request.getCurrentLatitude())
+                .currentLongitude(request.getCurrentLongitude())
+                .status("IDLE")
+                .build();
+
+        Uav saved = uavRepository.save(uav);
+        log.info("Registered new UAV: {} (id: {})", saved.getRegistrationCode(), saved.getId());
+        return saved;
+    }
+
+    /**
+     * Transitions a UAV to a new operational status.
+     * Used by the dispatch pipeline (e.g., IDLE → IN_MISSION → IDLE).
+     *
+     * @param id        the UAV database ID
+     * @param newStatus the target status (IDLE, IN_MISSION, MAINTENANCE, RETIRED)
+     * @return the updated UAV entity
+     */
+    @Transactional
+    public Uav updateUavStatus(Long id, String newStatus) {
+        Uav uav = getUavById(id);
+        String prev = uav.getStatus();
+        uav.setStatus(newStatus);
+        Uav saved = uavRepository.save(uav);
+        log.info("UAV {} status changed: {} → {}", uav.getRegistrationCode(), prev, newStatus);
+        return saved;
     }
 }

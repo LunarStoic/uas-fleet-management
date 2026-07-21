@@ -1,27 +1,17 @@
 # =============================================================================
-# Telemetry Gateway — MAVLink-to-WebSocket Bridge (FastAPI)
+# Telemetry Gateway — Mission-Aware WebSocket Bridge (FastAPI)
 # =============================================================================
-# This service acts as a bridge between the UAV flight controller (via MAVLink
-# protocol) and the web-based frontend dashboard (via WebSocket).
+# This service acts as a bridge between the dispatch-engine and the
+# web-based frontend dashboard (via WebSocket).
 #
 # ARCHITECTURE ROLE:
-#   [UAV / SITL Simulator] --MAVLink--> [telemetry-gateway] --WebSocket--> [Frontend]
+#   [dispatch-engine] --POST /missions/start--> [telemetry-gateway] --WebSocket--> [Frontend]
 #
 # DATA FLOW:
-#   1. The gateway connects to a MAVLink endpoint (SITL simulator or real UAV)
-#   2. It receives telemetry data: GPS position, altitude, speed, battery, etc.
-#   3. The data is reformatted as JSON and broadcast to all connected WebSocket
-#      clients in real-time.
-#
-# WHAT IS MAVLink?
-#   MAVLink (Micro Air Vehicle Link) is a lightweight messaging protocol for
-#   communicating with drones and autopilots (ArduPilot, PX4). It defines
-#   standard messages for GPS, attitude, battery, mission commands, etc.
-#
-# WHAT IS SITL?
-#   Software In The Loop — a simulator that runs the actual autopilot firmware
-#   on your computer without needing physical hardware. It generates realistic
-#   telemetry data for development and testing.
+#   1. dispatch-engine calls POST /missions/start with { uavId, orderId, waypoints }
+#   2. gateway starts a per-UAV broadcast loop that iterates through waypoints
+#   3. Position updates are pushed to all connected WebSocket clients in real-time
+#   4. When waypoints are exhausted, the mission ends automatically
 #
 # STARTUP:
 #   uvicorn main:app --host 0.0.0.0 --port 8091 --reload
@@ -30,22 +20,20 @@
 import asyncio
 import json
 import logging
+import math
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Set
+from typing import Dict, List, Optional, Set
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
 # Environment Configuration
 # ---------------------------------------------------------------------------
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
-
-# MAVLink connection string for SITL simulator
-# Default: tcp:127.0.0.1:5760 (ArduPilot SITL default)
-MAVLINK_CONNECTION = os.getenv('MAVLINK_CONNECTION', 'tcp:127.0.0.1:5760')
 
 # ---------------------------------------------------------------------------
 # Logging Configuration
@@ -59,6 +47,24 @@ logger = logging.getLogger('telemetry-gateway')
 
 
 # =============================================================================
+# Pydantic Models — Request/Response Schemas
+# =============================================================================
+class Waypoint(BaseModel):
+    lat: float
+    lng: float
+
+
+class StartMissionRequest(BaseModel):
+    uavId: str
+    orderId: int
+    waypoints: List[Waypoint]
+
+
+class StopMissionRequest(BaseModel):
+    uavId: str
+
+
+# =============================================================================
 # WebSocket Connection Manager
 # =============================================================================
 class ConnectionManager:
@@ -67,25 +73,14 @@ class ConnectionManager:
 
     DESIGN PATTERN: Observer Pattern
         - Clients connect via WebSocket and are added to the active set
-        - When new telemetry data arrives, it's broadcast to ALL connected clients
+        - When telemetry arrives, it's broadcast to ALL connected clients
         - Disconnected clients are automatically removed from the set
-
-    THREAD SAFETY:
-        FastAPI handles WebSocket connections asynchronously (single event loop),
-        so a simple set is sufficient — no locks needed.
     """
 
     def __init__(self):
-        # Set of active WebSocket connections
         self.active_connections: Set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket):
-        """
-        Accept a new WebSocket connection and add it to the active set.
-
-        Args:
-            websocket: The incoming WebSocket connection to accept
-        """
         await websocket.accept()
         self.active_connections.add(websocket)
         logger.info(
@@ -94,12 +89,6 @@ class ConnectionManager:
         )
 
     def disconnect(self, websocket: WebSocket):
-        """
-        Remove a disconnected WebSocket from the active set.
-
-        Args:
-            websocket: The WebSocket that disconnected
-        """
         self.active_connections.discard(websocket)
         logger.info(
             f'WebSocket client disconnected. '
@@ -107,16 +96,7 @@ class ConnectionManager:
         )
 
     async def broadcast(self, data: dict):
-        """
-        Send data to ALL connected WebSocket clients.
-
-        If a client fails to receive the message (broken pipe, timeout),
-        it is silently removed from the active set.
-
-        Args:
-            data: Dictionary to send as JSON to all clients
-        """
-        # Create a copy of the set to avoid modification during iteration
+        """Send data to ALL connected WebSocket clients."""
         disconnected = set()
         for connection in self.active_connections.copy():
             try:
@@ -124,7 +104,6 @@ class ConnectionManager:
             except Exception:
                 disconnected.add(connection)
 
-        # Clean up failed connections
         for conn in disconnected:
             self.active_connections.discard(conn)
 
@@ -132,78 +111,106 @@ class ConnectionManager:
 # Singleton instance of the connection manager
 manager = ConnectionManager()
 
+# =============================================================================
+# Mission Registry — In-memory store of active UAV missions
+# =============================================================================
+# Key: uavId (str), Value: asyncio.Task running the broadcast loop
+active_missions: Dict[str, asyncio.Task] = {}
+
 
 # =============================================================================
-# Simulated Telemetry Data Generator
+# Mission Broadcast Loop — Per-UAV Coroutine
 # =============================================================================
-async def generate_simulated_telemetry():
+async def run_mission_broadcast(uav_id: str, order_id: int, waypoints: List[Waypoint]):
     """
-    Generates simulated UAV telemetry data and broadcasts via WebSocket.
+    Broadcasts telemetry for a single UAV along its assigned waypoints.
 
-    SIMULATION DATA INCLUDES:
-        - GPS coordinates (latitude, longitude, altitude)
-        - Speed and heading
-        - Battery level
-        - Flight mode and armed status
+    For each waypoint pair (segment), the UAV's position is interpolated
+    and broadcast every second until the segment is complete. Once all
+    waypoints are traversed, the mission ends.
 
-    NOTE: In production, this function would be replaced by a pymavlink
-    connection to a real SITL simulator or physical UAV. The simulated data
-    follows the same JSON schema that the real implementation would use.
-
-    FUTURE IMPLEMENTATION (pymavlink):
-        from pymavlink import mavutil
-        master = mavutil.mavlink_connection(MAVLINK_CONNECTION)
-        master.wait_heartbeat()
-        while True:
-            msg = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
-            telemetry = {
-                'lat': msg.lat / 1e7,
-                'lng': msg.lon / 1e7,
-                'altitude': msg.relative_alt / 1000,
-                ...
-            }
+    Args:
+        uav_id: The UAV identifier, e.g. "UAV-001"
+        order_id: The logistics order ID this mission serves
+        waypoints: List of lat/lng waypoints defining the flight path
     """
-    # Starting position: Medan, North Sumatra, Indonesia
-    base_lat = 3.5952
-    base_lng = 98.6722
-    altitude = 100.0  # meters
-    tick = 0
+    logger.info(f'Mission started for UAV {uav_id} (Order #{order_id}), '
+                f'{len(waypoints)} waypoints')
 
-    logger.info('Starting simulated telemetry broadcast...')
+    try:
+        for i in range(len(waypoints) - 1):
+            origin = waypoints[i]
+            dest = waypoints[i + 1]
 
-    while True:
-        # Simulate a circular flight path
-        import math
-        tick += 1
-        angle = math.radians(tick % 360)
-        radius = 0.005  # ~500m radius in degree coordinates
+            # Calculate segment distance (Haversine approximation in degrees)
+            dist = math.sqrt((dest.lat - origin.lat) ** 2 + (dest.lng - origin.lng) ** 2)
+            # Number of steps per segment — 1 step/sec, proportional to distance
+            steps = max(5, int(dist / 0.001))
 
-        telemetry = {
-            'uavId': 'UAV-SIM-001',
+            for step in range(steps):
+                t = step / steps
+                current_lat = origin.lat + t * (dest.lat - origin.lat)
+                current_lng = origin.lng + t * (dest.lng - origin.lng)
+
+                # Heading from origin to destination (degrees)
+                d_lat = dest.lat - origin.lat
+                d_lng = dest.lng - origin.lng
+                heading = (math.degrees(math.atan2(d_lng, d_lat)) + 360) % 360
+
+                telemetry = {
+                    'uavId': uav_id,
+                    'orderId': order_id,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'position': {
+                        'latitude': round(current_lat, 7),
+                        'longitude': round(current_lng, 7),
+                        'altitude': 100.0  # Fixed cruise altitude (meters)
+                    },
+                    'velocity': {
+                        'groundSpeed': 12.5,
+                        'heading': round(heading, 1)
+                    },
+                    'battery': {
+                        'percentage': max(0, 100 - (step * 0.5)),
+                        'voltage': 22.2
+                    },
+                    'flightMode': 'AUTO',
+                    'armed': True,
+                    'missionStatus': 'IN_PROGRESS'
+                }
+
+                if manager.active_connections:
+                    await manager.broadcast(telemetry)
+
+                await asyncio.sleep(1)
+
+        # Mission complete — send final status
+        final = waypoints[-1]
+        completion_telemetry = {
+            'uavId': uav_id,
+            'orderId': order_id,
             'timestamp': datetime.now(timezone.utc).isoformat(),
             'position': {
-                'latitude': base_lat + radius * math.sin(angle),
-                'longitude': base_lng + radius * math.cos(angle),
-                'altitude': altitude + 10 * math.sin(angle / 2)
+                'latitude': final.lat,
+                'longitude': final.lng,
+                'altitude': 0.0
             },
-            'velocity': {
-                'groundSpeed': 12.5 + 2 * math.sin(angle),
-                'heading': (tick * 1) % 360
-            },
-            'battery': {
-                'percentage': max(0, 100 - tick * 0.01),
-                'voltage': 22.2 - tick * 0.001
-            },
-            'flightMode': 'AUTO',
-            'armed': True
+            'velocity': {'groundSpeed': 0.0, 'heading': 0},
+            'battery': {'percentage': 80.0, 'voltage': 22.0},
+            'flightMode': 'LANDED',
+            'armed': False,
+            'missionStatus': 'COMPLETED'
         }
-
-        # Only broadcast if there are connected clients
         if manager.active_connections:
-            await manager.broadcast(telemetry)
+            await manager.broadcast(completion_telemetry)
 
-        # Send telemetry every 1 second (1 Hz update rate)
-        await asyncio.sleep(1)
+        logger.info(f'Mission completed for UAV {uav_id} (Order #{order_id})')
+
+    except asyncio.CancelledError:
+        logger.info(f'Mission cancelled for UAV {uav_id}')
+    finally:
+        # Remove from active registry when done
+        active_missions.pop(uav_id, None)
 
 
 # =============================================================================
@@ -211,24 +218,15 @@ async def generate_simulated_telemetry():
 # =============================================================================
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """
-    Application lifespan — starts/stops the telemetry broadcast task.
-    """
-    # --- STARTUP ---
-    logger.info('Telemetry Gateway starting up...')
-    # Create an async task for the telemetry generator
-    telemetry_task = asyncio.create_task(generate_simulated_telemetry())
-    logger.info('Simulated telemetry broadcast task started.')
-
-    yield  # Application is running
-
-    # --- SHUTDOWN ---
+    """Application lifespan — no auto-start of telemetry. Missions are started
+    explicitly via POST /missions/start from the dispatch-engine."""
+    logger.info('Telemetry Gateway starting up — waiting for mission commands.')
+    yield
+    # Cancel all running missions on shutdown
     logger.info('Telemetry Gateway shutting down...')
-    telemetry_task.cancel()
-    try:
-        await telemetry_task
-    except asyncio.CancelledError:
-        logger.info('Telemetry broadcast task cancelled.')
+    for uav_id, task in list(active_missions.items()):
+        task.cancel()
+        logger.info(f'Cancelled mission for UAV {uav_id}')
 
 
 # =============================================================================
@@ -237,11 +235,11 @@ async def lifespan(application: FastAPI):
 app = FastAPI(
     title='UAS Fleet — Telemetry Gateway',
     description=(
-        'Real-time UAV telemetry bridge. Receives MAVLink telemetry from '
-        'flight controllers (or SITL simulator) and broadcasts to frontend '
-        'clients via WebSocket.'
+        'Real-time UAV telemetry bridge. Receives mission commands from the '
+        'dispatch-engine and broadcasts position updates to frontend clients '
+        'via WebSocket. No telemetry is broadcast without a valid mission.'
     ),
-    version='0.1.0',
+    version='1.0.0',
     lifespan=lifespan
 )
 
@@ -259,22 +257,11 @@ async def websocket_telemetry(websocket: WebSocket):
         ws.onmessage = (event) => {
             const telemetry = JSON.parse(event.data);
             updateMap(telemetry.position.latitude, telemetry.position.longitude);
-            updateDashboard(telemetry);
         };
-
-    PROTOCOL:
-        - Client connects → server accepts and adds to broadcast list
-        - Server pushes telemetry JSON every second (1 Hz)
-        - Client can send ping/pong to keep connection alive
-        - On disconnect, client is removed from broadcast list
     """
     await manager.connect(websocket)
     try:
-        # Keep the connection alive — listen for client messages (ping/pong)
         while True:
-            # Wait for any message from the client (keeps connection open)
-            # In a production system, this could handle commands like
-            # "subscribe to specific UAV" or "change update frequency"
             data = await websocket.receive_text()
             logger.debug(f'Received from client: {data}')
     except WebSocketDisconnect:
@@ -283,21 +270,77 @@ async def websocket_telemetry(websocket: WebSocket):
 
 
 # =============================================================================
+# Mission Control Endpoints
+# =============================================================================
+@app.post('/missions/start', tags=['Missions'])
+async def start_mission(request: StartMissionRequest):
+    """
+    Start broadcasting telemetry for a UAV on an assigned mission.
+    Called by the dispatch-engine after route optimization.
+
+    - If a mission for the same UAV is already active, it will be cancelled
+      and replaced by the new one.
+    """
+    uav_id = request.uavId
+
+    # Cancel any existing mission for this UAV
+    if uav_id in active_missions:
+        active_missions[uav_id].cancel()
+        logger.info(f'Replaced existing mission for UAV {uav_id}')
+
+    # Start new mission broadcast task
+    task = asyncio.create_task(
+        run_mission_broadcast(uav_id, request.orderId, request.waypoints)
+    )
+    active_missions[uav_id] = task
+
+    logger.info(
+        f'Mission registered: UAV={uav_id}, Order={request.orderId}, '
+        f'Waypoints={len(request.waypoints)}'
+    )
+    return {
+        'message': f'Mission started for UAV {uav_id}',
+        'uavId': uav_id,
+        'orderId': request.orderId,
+        'waypointCount': len(request.waypoints)
+    }
+
+
+@app.post('/missions/stop', tags=['Missions'])
+async def stop_mission(request: StopMissionRequest):
+    """
+    Stop broadcasting telemetry for a specific UAV.
+    Called when a mission is cancelled or aborted.
+    """
+    uav_id = request.uavId
+    if uav_id in active_missions:
+        active_missions[uav_id].cancel()
+        active_missions.pop(uav_id, None)
+        logger.info(f'Mission stopped for UAV {uav_id}')
+        return {'message': f'Mission stopped for UAV {uav_id}', 'uavId': uav_id}
+    return {'message': f'No active mission found for UAV {uav_id}', 'uavId': uav_id}
+
+
+@app.get('/missions', tags=['Missions'])
+async def list_missions():
+    """List all currently active UAV missions."""
+    return {
+        'activeMissions': list(active_missions.keys()),
+        'count': len(active_missions)
+    }
+
+
+# =============================================================================
 # REST Endpoints
 # =============================================================================
 @app.get('/health', tags=['System'])
 async def health_check():
-    """
-    Health check endpoint for Docker healthcheck and monitoring.
-
-    Returns:
-        Service status and number of active WebSocket connections.
-    """
+    """Health check endpoint for Docker healthcheck and monitoring."""
     return {
         'service': 'telemetry-gateway',
         'status': 'UP',
         'activeConnections': len(manager.active_connections),
-        'mavlinkTarget': MAVLINK_CONNECTION
+        'activeMissions': list(active_missions.keys())
     }
 
 
@@ -306,7 +349,8 @@ async def root():
     """Root endpoint — provides basic service information."""
     return {
         'service': 'UAS Fleet — Telemetry Gateway',
-        'version': '0.1.0',
+        'version': '1.0.0',
         'websocket': '/ws/telemetry',
+        'missions': '/missions',
         'docs': '/docs'
     }
